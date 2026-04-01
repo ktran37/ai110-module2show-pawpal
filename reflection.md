@@ -91,6 +91,68 @@ The key insight from working with AI on this project is that the human's job is 
 
 ---
 
+## 3b. Prompt Comparison — Multi-Model Approach
+
+**Task**: implement the recurring task rollover logic (`advance_recurring_tasks`).
+
+Two distinct algorithmic approaches were evaluated:
+
+---
+
+**Approach A — Mutation in place (what was built)**
+
+```python
+def advance_recurring_tasks(self) -> list[Task]:
+    new_tasks = []
+    for pet in self.owner.pets:
+        replacements = [(i, t.next_occurrence()) for i, t in enumerate(pet.tasks)
+                        if t.completed and t.frequency != "as-needed"]
+        for idx, nxt in reversed(replacements):
+            pet.tasks[idx] = nxt
+            new_tasks.append(nxt)
+    return new_tasks
+```
+
+*Characteristics*: replaces each completed task at its original index in reverse order (to preserve index stability), returns the new tasks. The list length stays constant — no accumulation over time.
+
+---
+
+**Approach B — Filter + append (alternative)**
+
+```python
+def advance_recurring_tasks(self) -> list[Task]:
+    new_tasks = []
+    for pet in self.owner.pets:
+        kept, fresh = [], []
+        for t in pet.tasks:
+            if t.completed and t.frequency != "as-needed":
+                nxt = t.next_occurrence()
+                if nxt: fresh.append(nxt)
+            else:
+                kept.append(t)
+        pet.tasks = kept + fresh
+        new_tasks.extend(fresh)
+    return new_tasks
+```
+
+*Characteristics*: separates completed-recurring tasks from the rest, appends new occurrences at the end. Simpler to read — no index arithmetic — but changes task ordering (new occurrences move to the bottom of each pet's list).
+
+---
+
+**Evaluation**
+
+| Criterion | Approach A (in-place) | Approach B (filter+append) |
+|---|---|---|
+| Readability | Moderate — `reversed()` requires explanation | High — intent is obvious |
+| Task ordering | Preserved exactly | Completed tasks move to end |
+| List growth | No — length stays constant | No — same length |
+| Testability | Equal — both have clear inputs/outputs | Equal |
+| Chosen? | ✓ Yes | No |
+
+**Why Approach A was kept**: preserving the original task order matters for the UI — a task that was at position 0 in the pet's list should still appear at position 0 after rollover. Approach B would cause tasks to jump around on every rollover, which would feel buggy in the Streamlit interface. Approach B's readability advantage was not worth the ordering regression. The `reversed()` pattern is a well-known Python idiom for safe in-place list modification, so the moderate readability cost is acceptable.
+
+---
+
 ## 4. Testing and Verification
 
 **a. What you tested**

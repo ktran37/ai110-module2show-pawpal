@@ -28,6 +28,54 @@
 
 ---
 
+## Bonus Challenges
+
+### Challenge 1 — Urgency-Weighted Scheduling
+
+Added `Task.urgency_score()` and `Scheduler.build_weighted_plan()`.
+
+**Formula**: `score = priority_weight × (1 + 1 / (days_until_due + 1))`
+
+- `priority_weight`: high=3, medium=2, low=1
+- A task due today has urgency factor 1.0; due tomorrow → 0.5; far future → approaches 0
+
+This means a **medium-priority task that is overdue** (score ≈ 4.0) will be scheduled *before* a **high-priority task due next week** (score ≈ 3.4). Toggle "⚖️ Urgency weighting" in the app to switch modes.
+
+> Implemented using Agent Mode: prompted with the class signatures from `pawpal_system.py` and asked for a continuous scoring function that combined categorical priority with date-distance urgency. The formula was reviewed for boundary behavior (overdue, due today, far-future) before being accepted.
+
+### Challenge 2 — Data Persistence
+
+`Owner`, `Pet`, and `Task` each have `to_dict()` / `from_dict()` methods. `Owner` adds:
+
+```python
+owner.save_to_json("data.json")   # writes full state
+owner = Owner.load_from_json("data.json")  # restores full state
+```
+
+The Streamlit app **auto-loads** `data.json` on startup and **auto-saves** on every rerun — pets and tasks survive app restarts with no extra steps.
+
+> No third-party serialization library needed: each class owns its serialization, `date` objects are stored as ISO strings, and `dataclasses.replace()` handles round-trip copying.
+
+### Challenge 4 — Professional CLI Output
+
+`main.py` uses the [`tabulate`](https://pypi.org/project/tabulate/) library to format all terminal output as `rounded_outline` tables:
+
+```
+╭──────────────────────┬───────┬──────────┬─────────┬────────────┬───────╮
+│ Task                 │   Min │ Priority │ Freq    │ Due        │ Done  │
+├──────────────────────┼───────┼──────────┼─────────┼────────────┼───────┤
+│ Litter box           │     5 │ high     │ daily   │ 2026-03-31 │ ○     │
+│ Feeding              │     5 │ medium   │ daily   │ 2026-03-30 │ ○     │
+│ ...                  │   ... │ ...      │ ...     │ ...        │ ...   │
+╰──────────────────────┴───────┴──────────┴─────────┴────────────┴───────╯
+```
+
+### Challenge 5 — Multi-Model Prompt Comparison
+
+See **Section 3b** in [reflection.md](reflection.md) for a side-by-side comparison of two approaches to `advance_recurring_tasks()` — in-place index mutation vs. filter-and-append — with a decision rationale.
+
+---
+
 ## 📸 Demo
 
 **Owner & pet setup**

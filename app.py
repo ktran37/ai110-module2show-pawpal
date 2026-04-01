@@ -1,3 +1,4 @@
+import pathlib
 import streamlit as st
 
 # Step 1: import the logic layer directly
@@ -7,21 +8,27 @@ st.set_page_config(page_title="PawPal+", page_icon="🐾", layout="centered")
 st.title("🐾 PawPal+")
 st.caption("Pet care planning assistant")
 
+DATA_FILE = "data.json"
+
 # ---------------------------------------------------------------------------
 # Application "memory" via st.session_state
-# The Owner object lives here so it survives Streamlit reruns.
+# On first load: try to restore from data.json (Challenge 2), otherwise seed defaults.
 # ---------------------------------------------------------------------------
 
 if "owner" not in st.session_state:
-    default_owner = Owner(name="Jordan", available_minutes=90)
-    mochi = Pet(name="Mochi", species="dog", age_years=3.0)
-    mochi.add_task(Task("Morning walk", duration_minutes=30, priority="high",   frequency="daily"))
-    mochi.add_task(Task("Breakfast",    duration_minutes=10, priority="high",   frequency="daily"))
-    mochi.add_task(Task("Playtime",     duration_minutes=20, priority="medium", frequency="daily"))
-    mochi.add_task(Task("Brushing",     duration_minutes=15, priority="low",    frequency="weekly"))
-    default_owner.add_pet(mochi)
-    st.session_state.owner = default_owner
+    if pathlib.Path(DATA_FILE).exists():
+        st.session_state.owner = Owner.load_from_json(DATA_FILE)
+    else:
+        default_owner = Owner(name="Jordan", available_minutes=90)
+        mochi = Pet(name="Mochi", species="dog", age_years=3.0)
+        mochi.add_task(Task("Morning walk", duration_minutes=30, priority="high",   frequency="daily"))
+        mochi.add_task(Task("Breakfast",    duration_minutes=10, priority="high",   frequency="daily"))
+        mochi.add_task(Task("Playtime",     duration_minutes=20, priority="medium", frequency="daily"))
+        mochi.add_task(Task("Brushing",     duration_minutes=15, priority="low",    frequency="weekly"))
+        default_owner.add_pet(mochi)
+        st.session_state.owner = default_owner
     st.session_state.start_hour = 8
+    st.session_state.use_weighted = False
 
 owner: Owner = st.session_state.owner
 
@@ -129,11 +136,24 @@ st.divider()
 # ---------------------------------------------------------------------------
 st.subheader("Generate Schedule")
 
+col_a, col_b = st.columns([3, 2])
+with col_b:
+    st.session_state.use_weighted = st.toggle(
+        "⚖️ Urgency weighting",
+        value=st.session_state.use_weighted,
+        help="Score = priority × (1 + 1/(days_until_due+1)). Overdue tasks jump ahead regardless of priority tier.",
+    )
+
 if st.button("Build daily plan", type="primary"):
     if not owner.get_pending_tasks():
         st.warning("Add at least one pending task before generating a plan.")
     else:
-        plan = scheduler.build_plan()
+        # Build plan — standard or urgency-weighted (Challenge 1)
+        if st.session_state.use_weighted:
+            plan = scheduler.build_weighted_plan()
+            st.info("⚖️ Using **urgency-weighted** scheduling — overdue/soon-due tasks may jump ahead of higher-priority ones.")
+        else:
+            plan = scheduler.build_plan()
 
         # ── Conflict detection ────────────────────────────────────────────
         conflicts = scheduler.detect_conflicts(plan)
@@ -190,3 +210,8 @@ if owner.get_all_tasks():
             for t in new_tasks:
                 st.write(f"  • **{t.title}** → now due {t.due_date}")
             st.rerun()
+
+# ---------------------------------------------------------------------------
+# Auto-save (Challenge 2) — persist owner state to data.json on every rerun
+# ---------------------------------------------------------------------------
+owner.save_to_json(DATA_FILE)

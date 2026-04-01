@@ -522,6 +522,106 @@ def test_single_task_exactly_fills_budget_is_scheduled():
     assert plan.skipped == []
 
 
+# ---------------------------------------------------------------------------
+# Weighted urgency scoring tests (Challenge 1)
+# ---------------------------------------------------------------------------
+
+
+def test_urgency_score_overdue_beats_future():
+    """An overdue task should have a higher urgency score than a future task."""
+    from datetime import date as _date, timedelta
+    overdue = Task("Old", duration_minutes=10, priority="medium",
+                   due_date=_date.today() - timedelta(days=3))
+    future  = Task("Far", duration_minutes=10, priority="medium",
+                   due_date=_date.today() + timedelta(days=30))
+    assert overdue.urgency_score() > future.urgency_score()
+
+
+def test_urgency_score_medium_overdue_beats_high_future():
+    """A medium-priority overdue task should outscore a high-priority distant task."""
+    from datetime import date as _date, timedelta
+    med_overdue  = Task("Med now", 10, "medium", due_date=_date.today())
+    high_future  = Task("High far", 10, "high",  due_date=_date.today() + timedelta(days=14))
+    assert med_overdue.urgency_score() > high_future.urgency_score()
+
+
+def test_build_weighted_plan_respects_budget():
+    """Weighted plan must not schedule more minutes than available."""
+    owner = Owner("Jordan", available_minutes=30)
+    pet = Pet("Mochi", "dog")
+    for i in range(5):
+        pet.add_task(Task(f"T{i}", duration_minutes=15, priority="medium"))
+    owner.add_pet(pet)
+    plan = Scheduler(owner).build_weighted_plan()
+    assert plan.total_minutes <= 30
+
+
+def test_build_weighted_plan_skips_completed():
+    """Weighted plan should not schedule completed tasks."""
+    owner = Owner("Jordan", available_minutes=60)
+    pet = Pet("Mochi", "dog")
+    done = Task("Done", 10, "high")
+    done.mark_complete()
+    pet.add_task(done)
+    pet.add_task(Task("Pending", 10, "medium"))
+    owner.add_pet(pet)
+    plan = Scheduler(owner).build_weighted_plan()
+    titles = [st.task.title for st in plan.scheduled]
+    assert "Done" not in titles
+    assert "Pending" in titles
+
+
+# ---------------------------------------------------------------------------
+# JSON persistence tests (Challenge 2)
+# ---------------------------------------------------------------------------
+
+
+def test_task_round_trips_through_dict():
+    """Task.to_dict() → Task.from_dict() should produce an equal Task."""
+    task = Task("Walk", 20, "high", description="brisk", frequency="daily")
+    restored = Task.from_dict(task.to_dict())
+    assert restored.title == task.title
+    assert restored.duration_minutes == task.duration_minutes
+    assert restored.priority == task.priority
+    assert restored.frequency == task.frequency
+    assert restored.due_date == task.due_date
+
+
+def test_owner_save_and_load_json(tmp_path):
+    """Owner.save_to_json / load_from_json should round-trip all pets and tasks."""
+    owner = Owner("Jordan", available_minutes=60)
+    pet = Pet("Mochi", "dog", age_years=3.0)
+    pet.add_task(Task("Walk", 20, "high", frequency="daily"))
+    pet.add_task(Task("Feed", 5,  "high", frequency="daily"))
+    owner.add_pet(pet)
+
+    path = str(tmp_path / "test_data.json")
+    owner.save_to_json(path)
+    reloaded = Owner.load_from_json(path)
+
+    assert reloaded.name == "Jordan"
+    assert reloaded.available_minutes == 60
+    assert len(reloaded.pets) == 1
+    assert reloaded.pets[0].name == "Mochi"
+    assert len(reloaded.pets[0].tasks) == 2
+    assert reloaded.pets[0].tasks[0].title == "Walk"
+
+
+def test_load_json_preserves_completed_status(tmp_path):
+    """Completed tasks should still be completed after JSON round-trip."""
+    owner = Owner("Jordan")
+    pet = Pet("Mochi", "dog")
+    task = Task("Walk", 20, "high")
+    task.mark_complete()
+    pet.add_task(task)
+    owner.add_pet(pet)
+
+    path = str(tmp_path / "data.json")
+    owner.save_to_json(path)
+    reloaded = Owner.load_from_json(path)
+    assert reloaded.pets[0].tasks[0].completed is True
+
+
 def test_all_tasks_same_priority_scheduled_shortest_first():
     """When priorities are equal, shorter tasks should be scheduled before longer ones."""
     owner = Owner("Jordan", available_minutes=120)

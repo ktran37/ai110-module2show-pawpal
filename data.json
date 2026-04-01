@@ -1,0 +1,85 @@
+{
+  "name": "Jordan",
+  "available_minutes": 90,
+  "pets": [
+    {
+      "name": "Mochi",
+      "species": "dog",
+      "age_years": 3,
+      "notes": "",
+      "tasks": [
+        {
+          "title": "Brushing",
+          "duration_minutes": 15,
+          "priority": "low",
+          "description": "",
+          "frequency": "weekly",
+          "completed": false,
+          "due_date": "2026-03-31"
+        },
+        {
+          "title": "Morning walk",
+          "duration_minutes": 30,
+          "priority": "high",
+          "description": "",
+          "frequency": "daily",
+          "completed": false,
+          "due_date": "2026-04-01"
+        },
+        {
+          "title": "Fetch / play",
+          "duration_minutes": 20,
+          "priority": "medium",
+          "description": "",
+          "frequency": "daily",
+          "completed": false,
+          "due_date": "2026-04-01"
+        },
+        {
+          "title": "Breakfast",
+          "duration_minutes": 10,
+          "priority": "high",
+          "description": "",
+          "frequency": "daily",
+          "completed": false,
+          "due_date": "2026-04-01"
+        }
+      ]
+    },
+    {
+      "name": "Noodle",
+      "species": "cat",
+      "age_years": 5,
+      "notes": "",
+      "tasks": [
+        {
+          "title": "Interactive play",
+          "duration_minutes": 15,
+          "priority": "medium",
+          "description": "",
+          "frequency": "daily",
+          "completed": false,
+          "due_date": "2026-04-01"
+        },
+        {
+          "title": "Litter box",
+          "duration_minutes": 5,
+          "priority": "high",
+          "description": "",
+          "frequency": "daily",
+          "completed": false,
+          "due_date": "2026-04-01"
+        },
+        {
+          "title": "Feeding",
+          "duration_minutes": 5,
+          "priority": "medium",
+          "description": "",
+          "frequency": "daily",
+          "completed": false,
+          "due_date": "2026-03-31"
+        }
+      ]
+    }
+  ]
+}

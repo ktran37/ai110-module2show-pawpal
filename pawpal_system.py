@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import pathlib
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from typing import Literal
@@ -10,6 +12,7 @@ Priority = Literal["low", "medium", "high"]
 Frequency = Literal["daily", "weekly", "as-needed"]
 
 _PRIORITY_ORDER = {"high": 0, "medium": 1, "low": 2}
+_PRIORITY_WEIGHT = {"high": 3.0, "medium": 2.0, "low": 1.0}
 
 
 # ---------------------------------------------------------------------------
@@ -48,6 +51,44 @@ class Task:
         delta = timedelta(days=1) if self.frequency == "daily" else timedelta(weeks=1)
         return replace(self, completed=False, due_date=self.due_date + delta)
 
+    def urgency_score(self) -> float:
+        """Return a continuous urgency score combining priority weight and due-date proximity.
+
+        Formula: priority_weight × (1 + 1/(days_until_due + 1))
+        - Overdue or due today → urgency factor = 1.0 (maximum)
+        - Due tomorrow → 0.5; due in 7 days → 0.125; far future → approaches 0
+        A medium-priority task due today (score ≈ 4.0) can outrank a high-priority
+        task due next week (score ≈ 3.4), reflecting real-world urgency.
+        """
+        days = max(0, (self.due_date - date.today()).days)
+        urgency = 1.0 / (days + 1)
+        return _PRIORITY_WEIGHT[self.priority] * (1 + urgency)
+
+    def to_dict(self) -> dict:
+        """Serialise this Task to a plain dictionary for JSON storage."""
+        return {
+            "title": self.title,
+            "duration_minutes": self.duration_minutes,
+            "priority": self.priority,
+            "description": self.description,
+            "frequency": self.frequency,
+            "completed": self.completed,
+            "due_date": self.due_date.isoformat(),
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> Task:
+        """Deserialise a Task from a plain dictionary."""
+        return cls(
+            title=d["title"],
+            duration_minutes=d["duration_minutes"],
+            priority=d.get("priority", "medium"),
+            description=d.get("description", ""),
+            frequency=d.get("frequency", "daily"),
+            completed=d.get("completed", False),
+            due_date=date.fromisoformat(d["due_date"]) if "due_date" in d else date.today(),
+        )
+
     def __str__(self) -> str:
         """Return a short human-readable summary of the task."""
         status = "✓" if self.completed else "○"
@@ -85,6 +126,29 @@ class Pet:
         """Return only tasks that have not yet been completed."""
         return [t for t in self.tasks if not t.completed]
 
+    def to_dict(self) -> dict:
+        """Serialise this Pet (and all its tasks) to a plain dictionary."""
+        return {
+            "name": self.name,
+            "species": self.species,
+            "age_years": self.age_years,
+            "notes": self.notes,
+            "tasks": [t.to_dict() for t in self.tasks],
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> Pet:
+        """Deserialise a Pet (and its tasks) from a plain dictionary."""
+        pet = cls(
+            name=d["name"],
+            species=d["species"],
+            age_years=d.get("age_years", 0.0),
+            notes=d.get("notes", ""),
+        )
+        for td in d.get("tasks", []):
+            pet.add_task(Task.from_dict(td))
+        return pet
+
     def __str__(self) -> str:
         """Return a short description of the pet."""
         return f"{self.name} the {self.species} (age {self.age_years})"
@@ -121,6 +185,31 @@ class Owner:
             if pet.name.lower() == name.lower():
                 return pet
         return None
+
+    def to_dict(self) -> dict:
+        """Serialise this Owner (and all pets/tasks) to a plain dictionary."""
+        return {
+            "name": self.name,
+            "available_minutes": self.available_minutes,
+            "pets": [p.to_dict() for p in self.pets],
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> Owner:
+        """Deserialise an Owner (and all pets/tasks) from a plain dictionary."""
+        owner = cls(name=d["name"], available_minutes=d.get("available_minutes", 480))
+        for pd in d.get("pets", []):
+            owner.add_pet(Pet.from_dict(pd))
+        return owner
+
+    def save_to_json(self, path: str = "data.json") -> None:
+        """Save the owner's full state (pets + tasks) to a JSON file."""
+        pathlib.Path(path).write_text(json.dumps(self.to_dict(), indent=2))
+
+    @classmethod
+    def load_from_json(cls, path: str = "data.json") -> Owner:
+        """Load and return an Owner from a previously saved JSON file."""
+        return cls.from_dict(json.loads(pathlib.Path(path).read_text()))
 
     def __str__(self) -> str:
         """Return the owner's name."""
@@ -247,6 +336,60 @@ class Scheduler:
                 continue
             plan.scheduled.append(
                 ScheduledTask(task=task, pet=pet, start_time=current_time, reason=self._explain(task, remaining))
+            )
+            current_time += timedelta(minutes=task.duration_minutes)
+            remaining -= task.duration_minutes
+
+        return plan
+
+    # ------------------------------------------------------------------
+    # Weighted urgency plan (Challenge 1)
+    # ------------------------------------------------------------------
+
+    def build_weighted_plan(self) -> DailyPlan:
+        """Build a DailyPlan using urgency-weighted scoring instead of pure priority tiers.
+
+        Unlike build_plan() which sorts strictly by priority category, this method
+        computes a continuous score per task:
+
+            score = priority_weight × (1 + 1 / (days_until_due + 1))
+
+        This allows a medium-priority task due *today* to outrank a high-priority task
+        due next week, reflecting real-world urgency. Tasks are still greedy-selected
+        within the available time budget.
+        """
+        plan = DailyPlan(owner=self.owner)
+        remaining = self.owner.available_minutes
+        current_time = datetime.today().replace(
+            hour=self.start_hour, minute=0, second=0, microsecond=0
+        )
+
+        task_to_pet: dict[int, Pet] = {
+            id(task): pet
+            for pet in self.owner.pets
+            for task in pet.pending_tasks()
+        }
+
+        # Sort descending by urgency score (highest urgency first)
+        sorted_tasks = sorted(
+            self.owner.get_pending_tasks(),
+            key=lambda t: t.urgency_score(),
+            reverse=True,
+        )
+
+        for task in sorted_tasks:
+            pet = task_to_pet[id(task)]
+            if task.duration_minutes > remaining:
+                plan.skipped.append(
+                    (task, pet, f"only {remaining} min left; needs {task.duration_minutes} min")
+                )
+                continue
+            score_label = f"urgency score {task.urgency_score():.2f}"
+            plan.scheduled.append(
+                ScheduledTask(
+                    task=task, pet=pet, start_time=current_time,
+                    reason=f"{self._explain(task, remaining)} [{score_label}]",
+                )
             )
             current_time += timedelta(minutes=task.duration_minutes)
             remaining -= task.duration_minutes
